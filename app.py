@@ -57,6 +57,7 @@ class Visit(db.Model):
     person = db.Column(db.String(120))
     witnesses = db.Column(db.String(250))
     location = db.Column(db.String(250))
+    activities = db.Column(db.Text)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     incidents = db.relationship("Incident", backref="related_visit", lazy=True)
@@ -74,6 +75,7 @@ class Visit(db.Model):
             "person": self.person or "",
             "witnesses": self.witnesses or "",
             "location": self.location or "",
+            "activities": self.activities or "",
             "notes": self.notes or "",
             "created_at": self.created_at.isoformat() if self.created_at else "",
         }
@@ -141,6 +143,8 @@ with app.app_context():
             conn.execute(db.text("ALTER TABLE visit ADD COLUMN actual_start_time VARCHAR(5)"))
         if "actual_end_time" not in visit_cols:
             conn.execute(db.text("ALTER TABLE visit ADD COLUMN actual_end_time VARCHAR(5)"))
+        if "activities" not in visit_cols:
+            conn.execute(db.text("ALTER TABLE visit ADD COLUMN activities TEXT"))
         conn.commit()
 
 # ── Auth Routes ───────────────────────────────────────────────────────
@@ -258,6 +262,7 @@ def api_visits():
             v for v in visits
             if search in (v.person or "").lower()
             or search in (v.location or "").lower()
+            or search in (v.activities or "").lower()
             or search in (v.notes or "").lower()
             or search in v.type.lower()
             or search in v.date.isoformat()
@@ -281,6 +286,7 @@ def api_create_visit():
         person=d.get("person"),
         witnesses=d.get("witnesses"),
         location=d.get("location"),
+        activities=d.get("activities"),
         notes=d.get("notes"),
     )
     db.session.add(v)
@@ -303,6 +309,7 @@ def api_update_visit(vid):
     v.person = d.get("person")
     v.witnesses = d.get("witnesses")
     v.location = d.get("location")
+    v.activities = d.get("activities")
     v.notes = d.get("notes")
     db.session.commit()
     return jsonify(v.to_dict())
@@ -463,9 +470,9 @@ def api_export_csv():
             .all()
         )
         writer.writerow(["VISITATION LOG"])
-        writer.writerow(["Date", "Scheduled Start", "Scheduled End", "Actual Start", "Actual End", "Type", "Punctuality", "Person", "People Present", "Living Space", "Notes"])
+        writer.writerow(["Date", "Scheduled Start", "Scheduled End", "Actual Start", "Actual End", "Type", "Punctuality", "Person", "People Present", "Location", "Activities", "Notes"])
         for v in vlist:
-            writer.writerow([v.date.isoformat(), v.start_time, v.end_time or "", v.actual_start_time or "", v.actual_end_time or "", v.type, v.punctuality, v.person or "", v.witnesses or "", v.location or "", v.notes or ""])
+            writer.writerow([v.date.isoformat(), v.start_time, v.end_time or "", v.actual_start_time or "", v.actual_end_time or "", v.type, v.punctuality, v.person or "", v.witnesses or "", v.location or "", v.activities or "", v.notes or ""])
         writer.writerow([])
 
     if dtype in ("incidents", "all"):
@@ -577,6 +584,7 @@ def api_restore():
             person=vd.get("person"),
             witnesses=vd.get("witnesses"),
             location=vd.get("location"),
+            activities=vd.get("activities"),
             notes=vd.get("notes"),
         )
         db.session.add(v)

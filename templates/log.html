@@ -29,7 +29,10 @@
       <div class="form-group"><label>People Present</label><input type="text" id="vWitness" placeholder="e.g. Social worker, grandparent"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Parent's Living Space</label><input type="text" id="vLocation" placeholder="e.g. 2-bedroom apartment, tidy"></div>
+      <div class="form-group"><label>Location</label><input type="text" id="vLocation" placeholder="e.g. Home, park, school"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Activities</label><textarea id="vActivities" rows="3" placeholder="e.g. Played board games, had lunch together, went to the park"></textarea></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Notes</label><textarea id="vNotes" placeholder="Any additional details..."></textarea></div>
@@ -72,16 +75,17 @@ function renderVisitTable(visits) {
     document.getElementById('visitTableWrap').innerHTML = '<div class="empty-state"><div class="icon">&#128203;</div><p>No visits found.</p></div>';
     return;
   }
-  let h = '<table><thead><tr><th>Date</th><th>Scheduled</th><th>Actual</th><th>Type</th><th>Person</th><th>Status</th><th>Living Space</th><th></th></tr></thead><tbody>';
+  let h = '<table><thead><tr><th>Date</th><th>Scheduled</th><th>Actual</th><th>Type</th><th>Person</th><th>Status</th><th>Location</th><th>Activities</th><th></th></tr></thead><tbody>';
   visits.forEach(v => {
     const badge = v.punctuality === 'ontime' ? 'green' : v.punctuality === 'late' ? 'orange' : 'red';
     const label = v.punctuality === 'ontime' ? 'On Time' : v.punctuality === 'late' ? 'Late' : 'No-Show';
     const scheduled = v.start_time + (v.end_time ? ' - ' + v.end_time : '');
     const actual = v.actual_start_time ? v.actual_start_time + (v.actual_end_time ? ' - ' + v.actual_end_time : '') : '-';
+    const acts = v.activities ? (v.activities.length > 40 ? v.activities.slice(0, 40) + '...' : v.activities) : '-';
     h += `<tr>
       <td>${fmtDate(v.date)}</td><td>${scheduled}</td><td>${actual}</td><td>${esc(v.type)}</td>
       <td>${esc(v.person)}</td><td><span class="badge badge-${badge}">${label}</span></td>
-      <td>${esc(v.location || '-')}</td>
+      <td>${esc(v.location || '-')}</td><td>${esc(acts)}</td>
       <td class="actions">
         <button title="Edit" onclick='editVisit(${JSON.stringify(v)})'>&#9998;</button>
         <button title="Delete" onclick="deleteEntry('/api/visits/${v.id}', loadVisits)">&#128465;</button>
@@ -106,6 +110,7 @@ async function saveVisit(e) {
     person: document.getElementById('vPerson').value,
     witnesses: document.getElementById('vWitness').value,
     location: document.getElementById('vLocation').value,
+    activities: document.getElementById('vActivities').value,
     notes: document.getElementById('vNotes').value,
   };
   const url = id ? `/api/visits/${id}` : '/api/visits';
@@ -127,6 +132,7 @@ function editVisit(v) {
   document.getElementById('vPerson').value = v.person || '';
   document.getElementById('vWitness').value = v.witnesses || '';
   document.getElementById('vLocation').value = v.location || '';
+  document.getElementById('vActivities').value = v.activities || '';
   document.getElementById('vNotes').value = v.notes || '';
   document.getElementById('visitFormTitle').textContent = 'Edit Visit';
   document.getElementById('visitSubmitBtn').textContent = 'Update Visit';
