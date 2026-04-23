@@ -75,11 +75,14 @@ async function exportPDF() {
     doc.text('Visitation Log', 14, 62);
     doc.autoTable({
       startY: 66,
-      head: [['Date', 'Time', 'Type', 'Status', 'Person', 'Location', 'Notes']],
+      head: [['Date', 'Scheduled', 'Actual', 'Type', 'Status', 'Person', 'Living Space']],
       body: data.visits.map(v => [
-        v.date, v.start_time + (v.end_time ? '-' + v.end_time : ''), v.type,
+        v.date,
+        v.start_time + (v.end_time ? '-' + v.end_time : ''),
+        (v.actual_start_time || '-') + (v.actual_end_time ? '-' + v.actual_end_time : ''),
+        v.type,
         v.punctuality === 'ontime' ? 'On Time' : v.punctuality === 'late' ? 'Late' : 'No-Show',
-        v.person, v.location || '', (v.notes || '').slice(0, 60)
+        v.person, v.location || ''
       ]),
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [67, 97, 238] },

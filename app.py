@@ -50,6 +50,8 @@ class Visit(db.Model):
     date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.String(5), nullable=False)
     end_time = db.Column(db.String(5))
+    actual_start_time = db.Column(db.String(5))
+    actual_end_time = db.Column(db.String(5))
     type = db.Column(db.String(30), nullable=False)
     punctuality = db.Column(db.String(10), nullable=False)
     person = db.Column(db.String(120))
@@ -65,6 +67,8 @@ class Visit(db.Model):
             "date": self.date.isoformat(),
             "start_time": self.start_time,
             "end_time": self.end_time or "",
+            "actual_start_time": self.actual_start_time or "",
+            "actual_end_time": self.actual_end_time or "",
             "type": self.type,
             "punctuality": self.punctuality,
             "person": self.person or "",
@@ -127,11 +131,16 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
     with db.engine.connect() as conn:
-        cols = {r[1] for r in conn.execute(db.text("PRAGMA table_info(incident)"))}
-        if "mood" not in cols:
+        inc_cols = {r[1] for r in conn.execute(db.text("PRAGMA table_info(incident)"))}
+        if "mood" not in inc_cols:
             conn.execute(db.text("ALTER TABLE incident ADD COLUMN mood VARCHAR(30)"))
-        if "tone" not in cols:
+        if "tone" not in inc_cols:
             conn.execute(db.text("ALTER TABLE incident ADD COLUMN tone VARCHAR(30)"))
+        visit_cols = {r[1] for r in conn.execute(db.text("PRAGMA table_info(visit)"))}
+        if "actual_start_time" not in visit_cols:
+            conn.execute(db.text("ALTER TABLE visit ADD COLUMN actual_start_time VARCHAR(5)"))
+        if "actual_end_time" not in visit_cols:
+            conn.execute(db.text("ALTER TABLE visit ADD COLUMN actual_end_time VARCHAR(5)"))
         conn.commit()
 
 # ── Auth Routes ───────────────────────────────────────────────────────
@@ -265,6 +274,8 @@ def api_create_visit():
         date=date.fromisoformat(d["date"]),
         start_time=d["start_time"],
         end_time=d.get("end_time") or None,
+        actual_start_time=d.get("actual_start_time") or None,
+        actual_end_time=d.get("actual_end_time") or None,
         type=d["type"],
         punctuality=d["punctuality"],
         person=d.get("person"),
@@ -285,6 +296,8 @@ def api_update_visit(vid):
     v.date = date.fromisoformat(d["date"])
     v.start_time = d["start_time"]
     v.end_time = d.get("end_time") or None
+    v.actual_start_time = d.get("actual_start_time") or None
+    v.actual_end_time = d.get("actual_end_time") or None
     v.type = d["type"]
     v.punctuality = d["punctuality"]
     v.person = d.get("person")
@@ -450,9 +463,9 @@ def api_export_csv():
             .all()
         )
         writer.writerow(["VISITATION LOG"])
-        writer.writerow(["Date", "Start Time", "End Time", "Type", "Punctuality", "Person", "Witnesses", "Location", "Notes"])
+        writer.writerow(["Date", "Scheduled Start", "Scheduled End", "Actual Start", "Actual End", "Type", "Punctuality", "Person", "People Present", "Living Space", "Notes"])
         for v in vlist:
-            writer.writerow([v.date.isoformat(), v.start_time, v.end_time or "", v.type, v.punctuality, v.person or "", v.witnesses or "", v.location or "", v.notes or ""])
+            writer.writerow([v.date.isoformat(), v.start_time, v.end_time or "", v.actual_start_time or "", v.actual_end_time or "", v.type, v.punctuality, v.person or "", v.witnesses or "", v.location or "", v.notes or ""])
         writer.writerow([])
 
     if dtype in ("incidents", "all"):
@@ -557,6 +570,8 @@ def api_restore():
             date=date.fromisoformat(vd["date"]),
             start_time=vd["start_time"],
             end_time=vd.get("end_time") or None,
+            actual_start_time=vd.get("actual_start_time") or None,
+            actual_end_time=vd.get("actual_end_time") or None,
             type=vd["type"],
             punctuality=vd["punctuality"],
             person=vd.get("person"),
