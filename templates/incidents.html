@@ -5,25 +5,51 @@
 <p class="subtitle">Document concerns and notable events</p>
 <div class="card">
   <h2 id="incidentFormTitle">Report New Incident</h2>
-  <form id="incidentForm" onsubmit="saveIncident(event)">
+  <form id="incidentForm" onsubmit="saveIncidents(event)">
     <input type="hidden" id="incId">
-    <div class="form-row">
-      <div class="form-group"><label>Date &amp; Time</label><input type="datetime-local" id="iDate" required></div>
-      <div class="form-group"><label>Severity</label>
-        <select id="iSeverity"><option>Minor Concern</option><option>Moderate</option><option>Serious</option></select>
+    <div id="incidentEntries">
+      <div class="incident-entry" data-idx="0">
+        <div class="incident-entry-header">
+          <span class="incident-entry-label">Incident #1</span>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Date &amp; Time</label><input type="datetime-local" class="ie-date" required></div>
+          <div class="form-group"><label>Severity</label>
+            <select class="ie-severity"><option>Minor Concern</option><option>Moderate</option><option>Serious</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Mood</label>
+            <select class="ie-mood">
+              <option value="">-- Select --</option>
+              <option>Calm</option><option>Happy</option><option>Anxious</option>
+              <option>Upset</option><option>Angry</option><option>Sad</option>
+              <option>Fearful</option><option>Withdrawn</option><option>Confused</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Tone</label>
+            <select class="ie-tone">
+              <option value="">-- Select --</option>
+              <option>Cooperative</option><option>Friendly</option><option>Neutral</option>
+              <option>Dismissive</option><option>Confrontational</option><option>Aggressive</option>
+              <option>Defensive</option><option>Apologetic</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Related Visit</label>
+            <select class="ie-related"><option value="">None</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Description</label><textarea class="ie-desc" rows="4" required placeholder="Describe what happened..."></textarea></div>
+        </div>
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Related Visit</label>
-        <select id="iRelatedVisit"><option value="">None</option></select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Description</label><textarea id="iDesc" rows="4" required placeholder="Describe what happened..."></textarea></div>
-    </div>
-    <div style="display:flex;gap:10px">
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
       <button type="submit" class="btn btn-danger" id="incSubmitBtn">Save Incident</button>
-      <button type="button" class="btn btn-outline" onclick="resetIncidentForm()">Clear</button>
+      <button type="button" class="btn btn-outline" id="addIncidentBtn" onclick="addIncidentEntry()">+ Add Another Incident</button>
+      <button type="button" class="btn btn-outline" onclick="resetIncidentForm()">Clear All</button>
     </div>
   </form>
 </div>
@@ -34,26 +60,117 @@
 {% endblock %}
 {% block scripts %}
 <script>
-setDefaultDateTime();
+let _relatedVisitsCache = [];
+
+setDefaultDateTimes();
 loadRelatedVisits();
 loadIncidents();
 
-function setDefaultDateTime() {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  document.getElementById('iDate').value = now.toISOString().slice(0,16);
+function setDefaultDateTimes() {
+  document.querySelectorAll('.ie-date').forEach(el => {
+    if (!el.value) {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      el.value = now.toISOString().slice(0,16);
+    }
+  });
+}
+
+function populateRelatedSelects() {
+  document.querySelectorAll('.ie-related').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">None</option>';
+    _relatedVisitsCache.forEach(v => {
+      sel.innerHTML += `<option value="${v.id}">${fmtDate(v.date)} - ${esc(v.type)} (${esc(v.person)})</option>`;
+    });
+    sel.value = cur;
+  });
 }
 
 async function loadRelatedVisits() {
   const res = await fetch('/api/visits');
-  const visits = await res.json();
-  const sel = document.getElementById('iRelatedVisit');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">None</option>';
-  visits.forEach(v => {
-    sel.innerHTML += `<option value="${v.id}">${fmtDate(v.date)} - ${esc(v.type)} (${esc(v.person)})</option>`;
+  _relatedVisitsCache = await res.json();
+  populateRelatedSelects();
+}
+
+function getEntryTemplate(idx) {
+  return `
+    <div class="incident-entry" data-idx="${idx}">
+      <div class="incident-entry-header">
+        <span class="incident-entry-label">Incident #${idx + 1}</span>
+        <button type="button" class="btn btn-outline btn-sm remove-entry-btn" onclick="removeIncidentEntry(this)">&times; Remove</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Date &amp; Time</label><input type="datetime-local" class="ie-date" required></div>
+        <div class="form-group"><label>Severity</label>
+          <select class="ie-severity"><option>Minor Concern</option><option>Moderate</option><option>Serious</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Mood</label>
+          <select class="ie-mood">
+            <option value="">-- Select --</option>
+            <option>Calm</option><option>Happy</option><option>Anxious</option>
+            <option>Upset</option><option>Angry</option><option>Sad</option>
+            <option>Fearful</option><option>Withdrawn</option><option>Confused</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Tone</label>
+          <select class="ie-tone">
+            <option value="">-- Select --</option>
+            <option>Cooperative</option><option>Friendly</option><option>Neutral</option>
+            <option>Dismissive</option><option>Confrontational</option><option>Aggressive</option>
+            <option>Defensive</option><option>Apologetic</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Related Visit</label>
+          <select class="ie-related"><option value="">None</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Description</label><textarea class="ie-desc" rows="4" required placeholder="Describe what happened..."></textarea></div>
+      </div>
+    </div>`;
+}
+
+function addIncidentEntry() {
+  const container = document.getElementById('incidentEntries');
+  const idx = container.querySelectorAll('.incident-entry').length;
+  container.insertAdjacentHTML('beforeend', getEntryTemplate(idx));
+  setDefaultDateTimes();
+  populateRelatedSelects();
+  renumberEntries();
+  updateFormButtons();
+}
+
+function removeIncidentEntry(btn) {
+  btn.closest('.incident-entry').remove();
+  renumberEntries();
+  updateFormButtons();
+}
+
+function renumberEntries() {
+  document.querySelectorAll('#incidentEntries .incident-entry').forEach((entry, i) => {
+    entry.dataset.idx = i;
+    const label = entry.querySelector('.incident-entry-label');
+    if (label) label.textContent = 'Incident #' + (i + 1);
   });
-  sel.value = cur;
+}
+
+function updateFormButtons() {
+  const entries = document.querySelectorAll('#incidentEntries .incident-entry');
+  const isEditing = !!document.getElementById('incId').value;
+  document.getElementById('addIncidentBtn').style.display = isEditing ? 'none' : '';
+  entries.forEach((e, i) => {
+    const rmBtn = e.querySelector('.remove-entry-btn');
+    if (rmBtn) rmBtn.style.display = (entries.length <= 1) ? 'none' : '';
+  });
+  const submitBtn = document.getElementById('incSubmitBtn');
+  if (!isEditing) {
+    submitBtn.textContent = entries.length > 1 ? `Save ${entries.length} Incidents` : 'Save Incident';
+  }
 }
 
 async function loadIncidents() {
@@ -62,18 +179,27 @@ async function loadIncidents() {
   renderIncidentTable(incidents);
 }
 
+function moodIcon(mood) {
+  const map = { Calm: '😌', Happy: '😊', Anxious: '😰', Upset: '😢', Angry: '😠', Sad: '😞', Fearful: '😨', Withdrawn: '🤐', Confused: '😵' };
+  return map[mood] || '';
+}
+
 function renderIncidentTable(incidents) {
   if (!incidents.length) {
     document.getElementById('incidentTableWrap').innerHTML = '<div class="empty-state"><div class="icon">&#9888;</div><p>No incidents recorded.</p></div>';
     return;
   }
-  let h = '<table><thead><tr><th>Date</th><th>Severity</th><th>Description</th><th></th></tr></thead><tbody>';
+  let h = '<table><thead><tr><th>Date</th><th>Severity</th><th>Mood</th><th>Tone</th><th>Description</th><th></th></tr></thead><tbody>';
   incidents.forEach(inc => {
     const badge = inc.severity === 'Minor Concern' ? 'blue' : inc.severity === 'Moderate' ? 'orange' : 'red';
     const desc = inc.description.length > 80 ? inc.description.slice(0, 80) + '...' : inc.description;
+    const mood = inc.mood ? `${moodIcon(inc.mood)} ${esc(inc.mood)}` : '<span style="color:var(--muted)">-</span>';
+    const tone = inc.tone ? esc(inc.tone) : '<span style="color:var(--muted)">-</span>';
     h += `<tr>
       <td>${fmtDateTime(inc.date)}</td>
       <td><span class="badge badge-${badge}">${esc(inc.severity)}</span></td>
+      <td>${mood}</td>
+      <td>${tone}</td>
       <td>${esc(desc)}</td>
       <td class="actions">
         <button title="Edit" onclick='editIncident(${JSON.stringify(inc)})'>&#9998;</button>
@@ -85,41 +211,77 @@ function renderIncidentTable(incidents) {
   document.getElementById('incidentTableWrap').innerHTML = h;
 }
 
-async function saveIncident(e) {
+async function saveIncidents(e) {
   e.preventDefault();
-  const id = document.getElementById('incId').value;
-  const body = {
-    date: document.getElementById('iDate').value,
-    severity: document.getElementById('iSeverity').value,
-    related_visit_id: document.getElementById('iRelatedVisit').value || null,
-    description: document.getElementById('iDesc').value,
-  };
-  const url = id ? `/api/incidents/${id}` : '/api/incidents';
-  const method = id ? 'PUT' : 'POST';
-  await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const editId = document.getElementById('incId').value;
+
+  if (editId) {
+    const entry = document.querySelector('#incidentEntries .incident-entry');
+    const body = entryToPayload(entry);
+    await fetch(`/api/incidents/${editId}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+  } else {
+    const entries = document.querySelectorAll('#incidentEntries .incident-entry');
+    const payloads = Array.from(entries).map(entryToPayload);
+    await fetch('/api/incidents', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payloads.length === 1 ? payloads[0] : payloads)
+    });
+  }
   resetIncidentForm();
   loadIncidents();
 }
 
+function entryToPayload(entry) {
+  return {
+    date: entry.querySelector('.ie-date').value,
+    severity: entry.querySelector('.ie-severity').value,
+    mood: entry.querySelector('.ie-mood').value || null,
+    tone: entry.querySelector('.ie-tone').value || null,
+    related_visit_id: entry.querySelector('.ie-related').value || null,
+    description: entry.querySelector('.ie-desc').value,
+  };
+}
+
 function editIncident(inc) {
   loadRelatedVisits().then(() => {
+    const container = document.getElementById('incidentEntries');
+    container.innerHTML = '';
+    container.insertAdjacentHTML('beforeend', getEntryTemplate(0));
+    populateRelatedSelects();
+
     document.getElementById('incId').value = inc.id;
-    document.getElementById('iDate').value = inc.date.slice(0,16);
-    document.getElementById('iSeverity').value = inc.severity;
-    document.getElementById('iRelatedVisit').value = inc.related_visit_id || '';
-    document.getElementById('iDesc').value = inc.description;
+    const entry = container.querySelector('.incident-entry');
+    entry.querySelector('.ie-date').value = inc.date.slice(0,16);
+    entry.querySelector('.ie-severity').value = inc.severity;
+    entry.querySelector('.ie-mood').value = inc.mood || '';
+    entry.querySelector('.ie-tone').value = inc.tone || '';
+    entry.querySelector('.ie-related').value = inc.related_visit_id || '';
+    entry.querySelector('.ie-desc').value = inc.description;
+
     document.getElementById('incidentFormTitle').textContent = 'Edit Incident';
     document.getElementById('incSubmitBtn').textContent = 'Update Incident';
+    updateFormButtons();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 }
 
 function resetIncidentForm() {
-  document.getElementById('incidentForm').reset();
   document.getElementById('incId').value = '';
+  const container = document.getElementById('incidentEntries');
+  container.innerHTML = '';
+  container.insertAdjacentHTML('beforeend', getEntryTemplate(0));
+  setDefaultDateTimes();
+  populateRelatedSelects();
   document.getElementById('incidentFormTitle').textContent = 'Report New Incident';
   document.getElementById('incSubmitBtn').textContent = 'Save Incident';
-  setDefaultDateTime();
+  updateFormButtons();
 }
+
+updateFormButtons();
 </script>
 {% endblock %}

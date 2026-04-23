@@ -80,6 +80,8 @@ class Incident(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     date = db.Column(db.DateTime, nullable=False)
     severity = db.Column(db.String(20), nullable=False)
+    mood = db.Column(db.String(30))
+    tone = db.Column(db.String(30))
     related_visit_id = db.Column(db.Integer, db.ForeignKey("visit.id"), nullable=True)
     description = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -89,6 +91,8 @@ class Incident(db.Model):
             "id": self.id,
             "date": self.date.isoformat() if self.date else "",
             "severity": self.severity,
+            "mood": self.mood or "",
+            "tone": self.tone or "",
             "related_visit_id": self.related_visit_id,
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else "",
@@ -122,6 +126,13 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
+    with db.engine.connect() as conn:
+        cols = {r[1] for r in conn.execute(db.text("PRAGMA table_info(incident)"))}
+        if "mood" not in cols:
+            conn.execute(db.text("ALTER TABLE incident ADD COLUMN mood VARCHAR(30)"))
+        if "tone" not in cols:
+            conn.execute(db.text("ALTER TABLE incident ADD COLUMN tone VARCHAR(30)"))
+        conn.commit()
 
 # ── Auth Routes ───────────────────────────────────────────────────────
 
@@ -315,16 +326,24 @@ def api_incidents():
 @login_required
 def api_create_incident():
     d = request.json
-    inc = Incident(
-        user_id=current_user.id,
-        date=datetime.fromisoformat(d["date"]),
-        severity=d["severity"],
-        related_visit_id=d.get("related_visit_id") or None,
-        description=d["description"],
-    )
-    db.session.add(inc)
+    items = d if isinstance(d, list) else [d]
+    created = []
+    for item in items:
+        inc = Incident(
+            user_id=current_user.id,
+            date=datetime.fromisoformat(item["date"]),
+            severity=item["severity"],
+            mood=item.get("mood") or None,
+            tone=item.get("tone") or None,
+            related_visit_id=item.get("related_visit_id") or None,
+            description=item["description"],
+        )
+        db.session.add(inc)
+        created.append(inc)
     db.session.commit()
-    return jsonify(inc.to_dict()), 201
+    if len(created) == 1:
+        return jsonify(created[0].to_dict()), 201
+    return jsonify([c.to_dict() for c in created]), 201
 
 
 @app.route("/api/incidents/<int:iid>", methods=["PUT"])
@@ -334,6 +353,8 @@ def api_update_incident(iid):
     d = request.json
     inc.date = datetime.fromisoformat(d["date"])
     inc.severity = d["severity"]
+    inc.mood = d.get("mood") or None
+    inc.tone = d.get("tone") or None
     inc.related_visit_id = d.get("related_visit_id") or None
     inc.description = d["description"]
     db.session.commit()
@@ -445,10 +466,10 @@ def api_export_csv():
             .all()
         )
         writer.writerow(["INCIDENT LOG"])
-        writer.writerow(["Date", "Severity", "Description", "Related Visit Date"])
+        writer.writerow(["Date", "Severity", "Mood", "Tone", "Description", "Related Visit Date"])
         for inc in ilist:
             rel = Visit.query.get(inc.related_visit_id) if inc.related_visit_id else None
-            writer.writerow([inc.date.strftime("%Y-%m-%d %H:%M"), inc.severity, inc.description, rel.date.isoformat() if rel else ""])
+            writer.writerow([inc.date.strftime("%Y-%m-%d %H:%M"), inc.severity, inc.mood or "", inc.tone or "", inc.description, rel.date.isoformat() if rel else ""])
 
     buf.seek(0)
     return Response(
@@ -550,6 +571,8 @@ def api_restore():
             user_id=current_user.id,
             date=datetime.fromisoformat(ind["date"]),
             severity=ind["severity"],
+            mood=ind.get("mood") or None,
+            tone=ind.get("tone") or None,
             description=ind["description"],
         )
         db.session.add(inc)

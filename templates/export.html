@@ -94,9 +94,9 @@ async function exportPDF() {
     doc.text('Incident Log', 14, startY);
     doc.autoTable({
       startY: startY + 4,
-      head: [['Date', 'Severity', 'Description']],
+      head: [['Date', 'Severity', 'Mood', 'Tone', 'Description']],
       body: data.incidents.map(inc => [
-        inc.date.slice(0, 16).replace('T', ' '), inc.severity, inc.description.slice(0, 100)
+        inc.date.slice(0, 16).replace('T', ' '), inc.severity, inc.mood || '-', inc.tone || '-', inc.description.slice(0, 80)
       ]),
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [230, 57, 70] },
