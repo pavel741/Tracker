@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Visitation Tracker{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p class="subtitle">Monthly overview of visitation compliance</p>
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="num">-</div><div class="lbl">Loading...</div></div>
+</div>
+<div class="card">
+  <div class="cal-header">
+    <button onclick="changeMonth(-1)">&#9664;</button>
+    <h2 id="calTitle"></h2>
+    <button onclick="changeMonth(1)">&#9654;</button>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+<div class="card">
+  <h2>Recent Visits</h2>
+  <div id="recentVisits"><div class="empty-state"><div class="icon">&#9203;</div><p>Loading...</p></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+loadDashboard();
+
+function changeMonth(d) {
+  calMonth += d;
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  loadDashboard();
+}
+
+async function loadDashboard() {
+  const res = await fetch(`/api/dashboard?year=${calYear}&month=${calMonth}`);
+  const data = await res.json();
+  renderStats(data);
+  renderCalendar(data, calYear, calMonth);
+  renderRecent(data.recent);
+}
+
+function renderStats(data) {
+  const ontime = data.visits.filter(v => v.punctuality === 'ontime').length;
+  const late = data.visits.filter(v => v.punctuality === 'late').length;
+  const noshow = data.visits.filter(v => v.punctuality === 'noshow').length;
+  const incs = data.incidents.length;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card green"><div class="num">${ontime}</div><div class="lbl">On Time</div></div>
+    <div class="stat-card orange"><div class="num">${late}</div><div class="lbl">Late</div></div>
+    <div class="stat-card red"><div class="num">${noshow}</div><div class="lbl">No-Shows</div></div>
+    <div class="stat-card blue"><div class="num">${incs}</div><div class="lbl">Incidents</div></div>
+  `;
+}
+
+function renderRecent(recent) {
+  if (!recent.length) {
+    document.getElementById('recentVisits').innerHTML = '<div class="empty-state"><div class="icon">&#128203;</div><p>No visits recorded yet.</p></div>';
+    return;
+  }
+  let h = '<table><thead><tr><th>Date</th><th>Type</th><th>Person</th><th>Status</th></tr></thead><tbody>';
+  recent.forEach(v => {
+    const badge = v.punctuality === 'ontime' ? 'green' : v.punctuality === 'late' ? 'orange' : 'red';
+    const label = v.punctuality === 'ontime' ? 'On Time' : v.punctuality === 'late' ? 'Late' : 'No-Show';
+    h += `<tr><td>${fmtDate(v.date)}</td><td>${esc(v.type)}</td><td>${esc(v.person)}</td><td><span class="badge badge-${badge}">${label}</span></td></tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('recentVisits').innerHTML = h;
+}
+</script>
+{% endblock %}

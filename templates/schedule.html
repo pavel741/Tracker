@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Schedule - Visitation Tracker{% endblock %}
+{% block content %}
+<h1>Visitation Schedule</h1>
+<p class="subtitle">Define your recurring custody schedule</p>
+<div class="card">
+  <h2 id="schedFormTitle">Add Schedule Rule</h2>
+  <form id="scheduleForm" onsubmit="saveRule(event)">
+    <input type="hidden" id="sId">
+    <div class="form-row">
+      <div class="form-group"><label>Rule Type</label>
+        <select id="sType" onchange="updateSchedFields()">
+          <option value="weekly">Weekly (specific days)</option>
+          <option value="biweekly">Every Other Week</option>
+          <option value="monthly">Monthly (specific dates)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" id="weeklyRow">
+      <div class="form-group"><label>Days of Week</label>
+        <div class="day-checks" id="dayCheckboxes">
+          <label><input type="checkbox" value="0"> Sun</label>
+          <label><input type="checkbox" value="1"> Mon</label>
+          <label><input type="checkbox" value="2"> Tue</label>
+          <label><input type="checkbox" value="3"> Wed</label>
+          <label><input type="checkbox" value="4"> Thu</label>
+          <label><input type="checkbox" value="5"> Fri</label>
+          <label><input type="checkbox" value="6"> Sat</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-row hidden" id="biweeklyRow">
+      <div class="form-group"><label>Reference Start Date (a week the visit happens)</label><input type="date" id="sBiweeklyStart"></div>
+      <div class="form-group"><label>Days of That Week</label>
+        <div class="day-checks" id="biweekDayCheckboxes">
+          <label><input type="checkbox" value="0"> Sun</label>
+          <label><input type="checkbox" value="1"> Mon</label>
+          <label><input type="checkbox" value="2"> Tue</label>
+          <label><input type="checkbox" value="3"> Wed</label>
+          <label><input type="checkbox" value="4"> Thu</label>
+          <label><input type="checkbox" value="5"> Fri</label>
+          <label><input type="checkbox" value="6"> Sat</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-row hidden" id="monthlyRow">
+      <div class="form-group"><label>Dates of Month (comma-separated, e.g. 1,15)</label><input type="text" id="sMonthlyDates" placeholder="1,15"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Label</label><input type="text" id="sLabel" placeholder="e.g. Wednesday evening visit" required></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button type="submit" class="btn btn-primary" id="schedSubmitBtn">Add Rule</button>
+      <button type="button" class="btn btn-outline" onclick="resetSchedForm()">Clear</button>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2>Active Schedule Rules</h2>
+  <div class="rule-list" id="ruleList"></div>
+  <div id="noRules" class="empty-state"><div class="icon">&#128197;</div><p>No schedule rules defined yet.</p></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+loadRules();
+
+function updateSchedFields() {
+  const t = document.getElementById('sType').value;
+  document.getElementById('weeklyRow').classList.toggle('hidden', t !== 'weekly');
+  document.getElementById('biweeklyRow').classList.toggle('hidden', t !== 'biweekly');
+  document.getElementById('monthlyRow').classList.toggle('hidden', t !== 'monthly');
+}
+
+async function loadRules() {
+  const res = await fetch('/api/schedule');
+  const rules = await res.json();
+  renderRules(rules);
+}
+
+function renderRules(rules) {
+  const list = document.getElementById('ruleList');
+  const empty = document.getElementById('noRules');
+  if (!rules.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  list.innerHTML = rules.map(r => {
+    let meta = '';
+    if (r.rule_type === 'weekly') meta = 'Every ' + (r.config.days||[]).map(d => DAY_NAMES[d]).join(', ');
+    else if (r.rule_type === 'biweekly') meta = 'Every other week (' + (r.config.days||[]).map(d => DAY_NAMES[d]).join(', ') + ')';
+    else meta = 'Monthly on day(s) ' + (r.config.dates||[]).join(', ');
+    return `<div class="rule-item">
+      <div><div class="desc">${esc(r.label)}</div><div class="meta">${meta}</div></div>
+      <div class="actions">
+        <button title="Edit" onclick='editRule(${JSON.stringify(r)})'>&#9998;</button>
+        <button title="Delete" onclick="deleteEntry('/api/schedule/${r.id}', loadRules)">&#128465;</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveRule(e) {
+  e.preventDefault();
+  const id = document.getElementById('sId').value;
+  const type = document.getElementById('sType').value;
+  const config = {};
+  if (type === 'weekly') {
+    config.days = [...document.querySelectorAll('#dayCheckboxes input:checked')].map(c => parseInt(c.value));
+    if (!config.days.length) { alert('Select at least one day.'); return; }
+  } else if (type === 'biweekly') {
+    config.refStart = document.getElementById('sBiweeklyStart').value;
+    config.days = [...document.querySelectorAll('#biweekDayCheckboxes input:checked')].map(c => parseInt(c.value));
+    if (!config.refStart || !config.days.length) { alert('Set a reference date and select days.'); return; }
+  } else {
+    config.dates = document.getElementById('sMonthlyDates').value.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= 31);
+    if (!config.dates.length) { alert('Enter valid dates.'); return; }
+  }
+  const body = { rule_type: type, config, label: document.getElementById('sLabel').value };
+  const url = id ? `/api/schedule/${id}` : '/api/schedule';
+  const method = id ? 'PUT' : 'POST';
+  await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  resetSchedForm();
+  loadRules();
+}
+
+function editRule(r) {
+  document.getElementById('sId').value = r.id;
+  document.getElementById('sType').value = r.rule_type;
+  document.getElementById('sLabel').value = r.label;
+  updateSchedFields();
+  if (r.rule_type === 'weekly') {
+    document.querySelectorAll('#dayCheckboxes input').forEach(c => c.checked = (r.config.days||[]).includes(parseInt(c.value)));
+  } else if (r.rule_type === 'biweekly') {
+    document.getElementById('sBiweeklyStart').value = r.config.refStart || '';
+    document.querySelectorAll('#biweekDayCheckboxes input').forEach(c => c.checked = (r.config.days||[]).includes(parseInt(c.value)));
+  } else {
+    document.getElementById('sMonthlyDates').value = (r.config.dates||[]).join(', ');
+  }
+  document.getElementById('schedFormTitle').textContent = 'Edit Schedule Rule';
+  document.getElementById('schedSubmitBtn').textContent = 'Update Rule';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetSchedForm() {
+  document.getElementById('scheduleForm').reset();
+  document.getElementById('sId').value = '';
+  document.getElementById('schedFormTitle').textContent = 'Add Schedule Rule';
+  document.getElementById('schedSubmitBtn').textContent = 'Add Rule';
+  updateSchedFields();
+}
+</script>
+{% endblock %}

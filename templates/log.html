@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Log Visit - Visitation Tracker{% endblock %}
+{% block content %}
+<h1>Visitation Log</h1>
+<p class="subtitle">Record and review all visitation events</p>
+<div class="card">
+  <h2 id="visitFormTitle">Log New Visit</h2>
+  <form id="visitForm" onsubmit="saveVisit(event)">
+    <input type="hidden" id="visitId">
+    <div class="form-row">
+      <div class="form-group"><label>Date</label><input type="date" id="vDate" required></div>
+      <div class="form-group"><label>Start Time</label><input type="time" id="vStart" required></div>
+      <div class="form-group"><label>End Time</label><input type="time" id="vEnd"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Type</label>
+        <select id="vType"><option>Full Visit</option><option>Pickup</option><option>Drop-off</option><option>Supervised Visit</option></select>
+      </div>
+      <div class="form-group"><label>Punctuality</label>
+        <select id="vPunctual"><option value="ontime">On Time</option><option value="late">Late</option><option value="noshow">No-Show</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Parent / Person Involved</label><input type="text" id="vPerson" placeholder="e.g. Jane Doe"></div>
+      <div class="form-group"><label>Witnesses</label><input type="text" id="vWitness" placeholder="Optional"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Location</label><input type="text" id="vLocation" placeholder="e.g. School parking lot"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Notes</label><textarea id="vNotes" placeholder="Any additional details..."></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button type="submit" class="btn btn-primary" id="visitSubmitBtn">Save Visit</button>
+      <button type="button" class="btn btn-outline" onclick="resetVisitForm()">Clear</button>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2>All Visits</h2>
+  <div class="filter-bar">
+    <input type="text" id="visitSearch" placeholder="Search..." oninput="loadVisits()">
+    <select id="visitFilter" onchange="loadVisits()">
+      <option value="">All Types</option><option>Full Visit</option><option>Pickup</option><option>Drop-off</option><option>Supervised Visit</option>
+    </select>
+  </div>
+  <div id="visitTableWrap"><div class="empty-state"><div class="icon">&#9203;</div><p>Loading...</p></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('vDate').value = new Date().toISOString().slice(0,10);
+loadVisits();
+
+async function loadVisits() {
+  const search = document.getElementById('visitSearch').value;
+  const type = document.getElementById('visitFilter').value;
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (type) params.set('type', type);
+  const res = await fetch('/api/visits?' + params);
+  const visits = await res.json();
+  renderVisitTable(visits);
+}
+
+function renderVisitTable(visits) {
+  if (!visits.length) {
+    document.getElementById('visitTableWrap').innerHTML = '<div class="empty-state"><div class="icon">&#128203;</div><p>No visits found.</p></div>';
+    return;
+  }
+  let h = '<table><thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Person</th><th>Status</th><th>Location</th><th></th></tr></thead><tbody>';
+  visits.forEach(v => {
+    const badge = v.punctuality === 'ontime' ? 'green' : v.punctuality === 'late' ? 'orange' : 'red';
+    const label = v.punctuality === 'ontime' ? 'On Time' : v.punctuality === 'late' ? 'Late' : 'No-Show';
+    const time = v.start_time + (v.end_time ? ' - ' + v.end_time : '');
+    h += `<tr>
+      <td>${fmtDate(v.date)}</td><td>${time}</td><td>${esc(v.type)}</td>
+      <td>${esc(v.person)}</td><td><span class="badge badge-${badge}">${label}</span></td>
+      <td>${esc(v.location || '-')}</td>
+      <td class="actions">
+        <button title="Edit" onclick='editVisit(${JSON.stringify(v)})'>&#9998;</button>
+        <button title="Delete" onclick="deleteEntry('/api/visits/${v.id}', loadVisits)">&#128465;</button>
+      </td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('visitTableWrap').innerHTML = h;
+}
+
+async function saveVisit(e) {
+  e.preventDefault();
+  const id = document.getElementById('visitId').value;
+  const body = {
+    date: document.getElementById('vDate').value,
+    start_time: document.getElementById('vStart').value,
+    end_time: document.getElementById('vEnd').value || null,
+    type: document.getElementById('vType').value,
+    punctuality: document.getElementById('vPunctual').value,
+    person: document.getElementById('vPerson').value,
+    witnesses: document.getElementById('vWitness').value,
+    location: document.getElementById('vLocation').value,
+    notes: document.getElementById('vNotes').value,
+  };
+  const url = id ? `/api/visits/${id}` : '/api/visits';
+  const method = id ? 'PUT' : 'POST';
+  await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  resetVisitForm();
+  loadVisits();
+}
+
+function editVisit(v) {
+  document.getElementById('visitId').value = v.id;
+  document.getElementById('vDate').value = v.date;
+  document.getElementById('vStart').value = v.start_time;
+  document.getElementById('vEnd').value = v.end_time || '';
+  document.getElementById('vType').value = v.type;
+  document.getElementById('vPunctual').value = v.punctuality;
+  document.getElementById('vPerson').value = v.person || '';
+  document.getElementById('vWitness').value = v.witnesses || '';
+  document.getElementById('vLocation').value = v.location || '';
+  document.getElementById('vNotes').value = v.notes || '';
+  document.getElementById('visitFormTitle').textContent = 'Edit Visit';
+  document.getElementById('visitSubmitBtn').textContent = 'Update Visit';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetVisitForm() {
+  document.getElementById('visitForm').reset();
+  document.getElementById('visitId').value = '';
+  document.getElementById('visitFormTitle').textContent = 'Log New Visit';
+  document.getElementById('visitSubmitBtn').textContent = 'Save Visit';
+  document.getElementById('vDate').value = new Date().toISOString().slice(0,10);
+}
+</script>
+{% endblock %}

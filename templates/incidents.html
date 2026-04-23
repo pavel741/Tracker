@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Incidents - Visitation Tracker{% endblock %}
+{% block content %}
+<h1>Incident Log</h1>
+<p class="subtitle">Document concerns and notable events</p>
+<div class="card">
+  <h2 id="incidentFormTitle">Report New Incident</h2>
+  <form id="incidentForm" onsubmit="saveIncident(event)">
+    <input type="hidden" id="incId">
+    <div class="form-row">
+      <div class="form-group"><label>Date &amp; Time</label><input type="datetime-local" id="iDate" required></div>
+      <div class="form-group"><label>Severity</label>
+        <select id="iSeverity"><option>Minor Concern</option><option>Moderate</option><option>Serious</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Related Visit</label>
+        <select id="iRelatedVisit"><option value="">None</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Description</label><textarea id="iDesc" rows="4" required placeholder="Describe what happened..."></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button type="submit" class="btn btn-danger" id="incSubmitBtn">Save Incident</button>
+      <button type="button" class="btn btn-outline" onclick="resetIncidentForm()">Clear</button>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2>All Incidents</h2>
+  <div id="incidentTableWrap"><div class="empty-state"><div class="icon">&#9203;</div><p>Loading...</p></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+setDefaultDateTime();
+loadRelatedVisits();
+loadIncidents();
+
+function setDefaultDateTime() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('iDate').value = now.toISOString().slice(0,16);
+}
+
+async function loadRelatedVisits() {
+  const res = await fetch('/api/visits');
+  const visits = await res.json();
+  const sel = document.getElementById('iRelatedVisit');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">None</option>';
+  visits.forEach(v => {
+    sel.innerHTML += `<option value="${v.id}">${fmtDate(v.date)} - ${esc(v.type)} (${esc(v.person)})</option>`;
+  });
+  sel.value = cur;
+}
+
+async function loadIncidents() {
+  const res = await fetch('/api/incidents');
+  const incidents = await res.json();
+  renderIncidentTable(incidents);
+}
+
+function renderIncidentTable(incidents) {
+  if (!incidents.length) {
+    document.getElementById('incidentTableWrap').innerHTML = '<div class="empty-state"><div class="icon">&#9888;</div><p>No incidents recorded.</p></div>';
+    return;
+  }
+  let h = '<table><thead><tr><th>Date</th><th>Severity</th><th>Description</th><th></th></tr></thead><tbody>';
+  incidents.forEach(inc => {
+    const badge = inc.severity === 'Minor Concern' ? 'blue' : inc.severity === 'Moderate' ? 'orange' : 'red';
+    const desc = inc.description.length > 80 ? inc.description.slice(0, 80) + '...' : inc.description;
+    h += `<tr>
+      <td>${fmtDateTime(inc.date)}</td>
+      <td><span class="badge badge-${badge}">${esc(inc.severity)}</span></td>
+      <td>${esc(desc)}</td>
+      <td class="actions">
+        <button title="Edit" onclick='editIncident(${JSON.stringify(inc)})'>&#9998;</button>
+        <button title="Delete" onclick="deleteEntry('/api/incidents/${inc.id}', loadIncidents)">&#128465;</button>
+      </td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('incidentTableWrap').innerHTML = h;
+}
+
+async function saveIncident(e) {
+  e.preventDefault();
+  const id = document.getElementById('incId').value;
+  const body = {
+    date: document.getElementById('iDate').value,
+    severity: document.getElementById('iSeverity').value,
+    related_visit_id: document.getElementById('iRelatedVisit').value || null,
+    description: document.getElementById('iDesc').value,
+  };
+  const url = id ? `/api/incidents/${id}` : '/api/incidents';
+  const method = id ? 'PUT' : 'POST';
+  await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  resetIncidentForm();
+  loadIncidents();
+}
+
+function editIncident(inc) {
+  loadRelatedVisits().then(() => {
+    document.getElementById('incId').value = inc.id;
+    document.getElementById('iDate').value = inc.date.slice(0,16);
+    document.getElementById('iSeverity').value = inc.severity;
+    document.getElementById('iRelatedVisit').value = inc.related_visit_id || '';
+    document.getElementById('iDesc').value = inc.description;
+    document.getElementById('incidentFormTitle').textContent = 'Edit Incident';
+    document.getElementById('incSubmitBtn').textContent = 'Update Incident';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+function resetIncidentForm() {
+  document.getElementById('incidentForm').reset();
+  document.getElementById('incId').value = '';
+  document.getElementById('incidentFormTitle').textContent = 'Report New Incident';
+  document.getElementById('incSubmitBtn').textContent = 'Save Incident';
+  setDefaultDateTime();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Export - Visitation Tracker{% endblock %}
+{% block content %}
+<h1>Export Records</h1>
+<p class="subtitle">Generate reports for your records or legal use</p>
+<div class="card">
+  <h2>Date Range</h2>
+  <div class="form-row">
+    <div class="form-group"><label>From</label><input type="date" id="exportFrom"></div>
+    <div class="form-group"><label>To</label><input type="date" id="exportTo"></div>
+  </div>
+</div>
+<div class="card">
+  <h2>Export Options</h2>
+  <p style="color:var(--text2);margin-bottom:16px;font-size:.9rem">Choose a format to download. PDF generates a formatted report; CSV produces a spreadsheet-ready file.</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <button class="btn btn-primary" onclick="exportPDF()">&#128196; Export PDF Report</button>
+    <button class="btn btn-outline" onclick="exportCSV('visits')">&#128202; Visits CSV</button>
+    <button class="btn btn-outline" onclick="exportCSV('incidents')">&#128202; Incidents CSV</button>
+    <button class="btn btn-outline" onclick="exportCSV('all')">&#128202; Full CSV</button>
+  </div>
+</div>
+<div class="card">
+  <h2>Data Management</h2>
+  <p style="color:var(--text2);margin-bottom:16px;font-size:.9rem">Backup saves all data as a JSON file. Restore loads data from a previous backup.</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <a href="/api/backup" class="btn btn-outline">&#128190; Download Backup</a>
+    <button class="btn btn-outline" onclick="document.getElementById('restoreInput').click()">&#128194; Restore from Backup</button>
+    <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreBackup(event)">
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function getRange() {
+  return {
+    from: document.getElementById('exportFrom').value || '1900-01-01',
+    to: document.getElementById('exportTo').value || '2999-12-31',
+  };
+}
+
+function exportCSV(type) {
+  const r = getRange();
+  window.location.href = `/api/export/csv?from=${r.from}&to=${r.to}&type=${type}`;
+}
+
+async function exportPDF() {
+  const r = getRange();
+  const res = await fetch(`/api/export/data?from=${r.from}&to=${r.to}`);
+  const data = await res.json();
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const rangeStr = `${r.from !== '1900-01-01' ? r.from : 'Start'} to ${r.to !== '2999-12-31' ? r.to : 'Present'}`;
+
+  doc.setFontSize(18);
+  doc.text('Visitation Record Report', 14, 20);
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text('Date Range: ' + rangeStr, 14, 28);
+  doc.text('Generated: ' + new Date().toLocaleDateString(), 14, 33);
+
+  const ontime = data.visits.filter(v => v.punctuality === 'ontime').length;
+  const late = data.visits.filter(v => v.punctuality === 'late').length;
+  const noshow = data.visits.filter(v => v.punctuality === 'noshow').length;
+
+  doc.setFontSize(13);
+  doc.setTextColor(0);
+  doc.text('Compliance Summary', 14, 44);
+  doc.setFontSize(10);
+  doc.text(`Total Visits: ${data.visits.length}  |  On Time: ${ontime}  |  Late: ${late}  |  No-Shows: ${noshow}  |  Incidents: ${data.incidents.length}`, 14, 51);
+
+  if (data.visits.length) {
+    doc.setFontSize(13);
+    doc.text('Visitation Log', 14, 62);
+    doc.autoTable({
+      startY: 66,
+      head: [['Date', 'Time', 'Type', 'Status', 'Person', 'Location', 'Notes']],
+      body: data.visits.map(v => [
+        v.date, v.start_time + (v.end_time ? '-' + v.end_time : ''), v.type,
+        v.punctuality === 'ontime' ? 'On Time' : v.punctuality === 'late' ? 'Late' : 'No-Show',
+        v.person, v.location || '', (v.notes || '').slice(0, 60)
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [67, 97, 238] },
+      alternateRowStyles: { fillColor: [245, 246, 250] },
+    });
+  }
+
+  if (data.incidents.length) {
+    const incY = (doc.lastAutoTable?.finalY || 70) + 14;
+    const startY = incY > 260 ? (doc.addPage(), 20) : incY;
+    doc.setFontSize(13);
+    doc.text('Incident Log', 14, startY);
+    doc.autoTable({
+      startY: startY + 4,
+      head: [['Date', 'Severity', 'Description']],
+      body: data.incidents.map(inc => [
+        inc.date.slice(0, 16).replace('T', ' '), inc.severity, inc.description.slice(0, 100)
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [230, 57, 70] },
+      alternateRowStyles: { fillColor: [245, 246, 250] },
+    });
+  }
+
+  doc.save('visitation-report.pdf');
+}
+
+async function restoreBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch('/api/restore', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.ok) alert('Data restored successfully!');
+  else alert('Error: ' + (data.error || 'Unknown'));
+  event.target.value = '';
+}
+</script>
+{% endblock %}

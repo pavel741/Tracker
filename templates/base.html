@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Visitation Tracker{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+<div class="mobile-header">
+  <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
+  <strong style="color:var(--primary)">Visitation Tracker</strong>
+  <span></span>
+</div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="logo">&#128203; Visitation Tracker</div>
+  <nav>
+    <a href="{{ url_for('dashboard') }}" class="nav-btn{% if request.endpoint == 'dashboard' %} active{% endif %}"><span class="icon">&#9673;</span> Dashboard</a>
+    <a href="{{ url_for('log_page') }}" class="nav-btn{% if request.endpoint == 'log_page' %} active{% endif %}"><span class="icon">&#128221;</span> Log Visit</a>
+    <a href="{{ url_for('incidents_page') }}" class="nav-btn{% if request.endpoint == 'incidents_page' %} active{% endif %}"><span class="icon">&#9888;</span> Incidents</a>
+    <a href="{{ url_for('schedule_page') }}" class="nav-btn{% if request.endpoint == 'schedule_page' %} active{% endif %}"><span class="icon">&#128197;</span> Schedule</a>
+    <a href="{{ url_for('export_page') }}" class="nav-btn{% if request.endpoint == 'export_page' %} active{% endif %}"><span class="icon">&#128229;</span> Export</a>
+  </nav>
+  <div class="sidebar-footer">
+    <button onclick="toggleTheme()" id="themeBtn">&#127769; Dark</button>
+    <span class="sidebar-user">{{ current_user.username }}</span>
+    <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+  </div>
+</aside>
+
+<main class="main" id="mainContent">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-container">
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<div class="modal-bg hidden" id="deleteModal">
+  <div class="modal">
+    <h2>Confirm Delete</h2>
+    <p id="deleteMsg">Are you sure? This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
